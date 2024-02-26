@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "sec-edgar-notebooks"
+version = "0.1.0"
+description = ""
+authors = ["Andreas Kollegger <akollegger@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.11.6"
+pandas = "^2.1.4"
+bs4 = "^0.0.1"
+lxml = "^5.0.0"
+requests-ratelimiter = "^0.4.2"
+xmltodict = "^0.13.0"
+langchain = "^0.0.353"
+python-dotenv = "^1.0.0"
+graphdatascience = "^1.8"
+openai = "^1.6.1"
+tiktoken = "^0.5.2"
+progress = "^1.6"
+neo4j = "^5.16.0"
+langchain-openai = "^0.0.2"
+langchain-community = "^0.0.14"
+googlemaps = "^4.10.0"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.28.0"
+jupyter = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
