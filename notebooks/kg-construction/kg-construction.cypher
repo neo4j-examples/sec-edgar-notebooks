@@ -1,4 +1,4 @@
-:params { openAiApiKey: "paste your OpenAI API key here" }, 
+:params { openAiApiKey: "paste your OpenAI API key here", 
   baseURL: "https://raw.githubusercontent.com/neo4j-examples/sec-edgar-notebooks/main/data/sample/"
 }
 ;
