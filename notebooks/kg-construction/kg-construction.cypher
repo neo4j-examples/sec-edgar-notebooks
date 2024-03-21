@@ -1,4 +1,67 @@
-:params { openAiApiKey: "paste your OpenAI API key here", 
+/**
+  * Load Form 10-K and Form 13 data from remote CSV files.
+  * 
+  * The process is:
+  * 
+  * 1. Load Form 10-K data from json files, creatinge one `(:Form)` per file
+  * 2. Migrate the text sections of the Form 10-K to `(:Chunk)` nodes, one per section
+  * 3. Connect `(:Form)-[:SECTION]->(:Chunk)` relationships
+  * 4. Split each section text into chunks of 1000 words and create a `(:Chunk)` for each chunk
+  * 5. Create a linked list of `(:Chunk)-[:NEXT]->(:Chunk)` relationships
+  * 6. Generate embeddings for each chunk using the OpenAI API
+  * 7. Load Form 13 data from a CSV file, creating `(:Company)` and `(:Manager)` nodes
+  * 8. Create `(:Manager)-[:OWNS_STOCK_IN]->(:Company)` relationships
+  * 9. Connect `(:Company)-[:FILED]->(:Form)` relationships
+  *
+  * The resulting graph will look like this:
+  *
+  * @graph ```
+  * (:Form => { 
+  *     formId :: string,   //  a unique identifier for the form
+  *     cik :: int,         // the Central Index Key for the company that filed the form
+  *     cusip6:: string,    // the CUSIP6 identifier for the company
+  *     source :: string,   // a link back to the original 10k document
+  *     summary :: string,  // text summary generated with the LLM 
+  *     summaryEmbeddings: list<float> // vector embedding of summary
+  * })
+  *
+  * (:Chunk => {
+  *    chunkId :: string,  // a unique identifier for the chunk
+  *    chunkSeqId :: int,  // the sequence number of the chunk within the section
+  *    text :: string,     // the text of the chunk 
+  *    textEmbedding :: list<float> // vector embedding of the text
+  * })
+  * 
+  * (:Form)=[:SECTION]=>(:Chunk)
+  * (:Chunk)=[:NEXT]=>(:Chunk)
+  *
+  * (:Company => {
+  *     name :: string, // the name of the company
+  *     names :: list<string>, // list of alternative names for the company
+  *     cusip6:: string,       // the CUSIP6 identifier for the company
+  *     cusip:: list<string>,  // list of known CUSIP identifiers for the company
+  *     address :: string, // the address of the company **NOTE: missing! **
+  * })
+  *
+  * (:Manager {
+  *     cik :: int, // the Central Index Key for the manager
+  *     name :: string, // the name of the manager
+  *     address :: string // the address of the manager
+  * })
+  * 
+  * (:Manager)=[:OWNS_STOCK_IN]=>(:Company)
+  * (:Company)=[:FILED]=>(:Form)
+  * ```
+  *
+  * @module LoadEdgarKG
+  * @param openAiApiKey::string - OpenAI API key
+  * @param baseURL::string - Base URL for the data files
+  */
+RETURN "LoadEdgarKG" as moduleName // first statement in a module must RETURN module name
+;
+// second statement in a module should indicate parameters with default values
+:params { 
+  openAiApiKey: "paste your OpenAI API key here", 
   baseURL: "https://raw.githubusercontent.com/neo4j-examples/sec-edgar-notebooks/main/data/sample/"
 }
 ;
@@ -6,11 +69,13 @@
 ////////////////////////////////////////////////
 // Load Form 10-K data
 
+// create constraints
 CREATE CONSTRAINT unique_form IF NOT EXISTS FOR (n:Form) REQUIRE n.formId IS UNIQUE
 ;
 CREATE CONSTRAINT unique_chunk IF NOT EXISTS 
     FOR (c:Chunk) REQUIRE c.chunkId IS UNIQUE
 ;
+// create vector index for form 10-K chunks
 CREATE VECTOR INDEX `form_10k_chunks` IF NOT EXISTS
 FOR (c:Chunk) ON (c.textEmbedding) 
 OPTIONS { indexConfig: {
@@ -80,23 +145,28 @@ CREATE CONSTRAINT unique_company
     IF NOT EXISTS FOR (com:Company) 
     REQUIRE com.cusip6 IS UNIQUE
 ;
+CREATE FULLTEXT INDEX fullTextCompanyNames
+  IF NOT EXISTS
+  FOR (com:Company) 
+  ON EACH [com.names]
+;
 CREATE CONSTRAINT unique_manager 
   IF NOT EXISTS
   FOR (n:Manager) 
-  REQUIRE n.managerCik IS UNIQUE
+  REQUIRE n.cik IS UNIQUE
 ;
 CREATE FULLTEXT INDEX fullTextManagerNames
   IF NOT EXISTS
   FOR (mgr:Manager) 
-  ON EACH [mgr.managerName]
+  ON EACH [mgr.name]
 ;
 LOAD CSV WITH HEADERS FROM $baseURL + "form13.csv" as row
 MERGE (com:Company {cusip6: row.cusip6})
-  ON CREATE SET com.companyName = row.companyName,
+  ON CREATE SET com.name = row.companyName,
                 com.cusip = row.cusip
-MERGE (mgr:Manager {managerCik: row.managerCik})
-    ON CREATE SET mgr.managerName = row.managerName,
-            mgr.managerAddress = row.managerAddress
+MERGE (mgr:Manager {cik: row.managerCik})
+    ON CREATE SET mgr.name = row.managerName,
+            mgr.address = row.managerAddress
 MERGE (mgr)-[owns:OWNS_STOCK_IN { 
     reportCalendarOrQuarter: row.reportCalendarOrQuarter }]->(com)
     ON CREATE
