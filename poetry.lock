@@ -1932,6 +1932,17 @@ files = [
 ]
 
 [[package]]
+name = "nirjas"
+version = "1.0.1"
+description = "A Python library to extract comments and source code out of your file(s)"
+optional = false
+python-versions = ">=3"
+files = [
+    {file = "Nirjas-1.0.1-py3-none-any.whl", hash = "sha256:3682ef943dfcde5a56e5ac1021c1e7edd9a3e9e060731efe3336d799ee6a8383"},
+    {file = "Nirjas-1.0.1.tar.gz", hash = "sha256:557e0d841b4398c10cd69b86522e52a8135a78665cd9a3ce281685405179eb5f"},
+]
+
+[[package]]
 name = "notebook"
 version = "7.0.8"
 description = "Jupyter Notebook - A web-based notebook environment for interactive computing"
@@ -3672,4 +3683,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "3.11.6"
-content-hash = "523dcc17dd78e74217d97fc4b11aa0ae890dac13b12e5004f84954f535fe1973"
+content-hash = "7aba183b9f4ebe8cac5a4fc0821a7f52ba93a6f69438bcbf2a9715846427cb3c"

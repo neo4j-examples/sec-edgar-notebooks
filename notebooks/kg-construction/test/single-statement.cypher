@@ -1,0 +1,1 @@
+RETURN "hello" as message

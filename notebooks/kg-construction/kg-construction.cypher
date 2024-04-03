@@ -17,34 +17,40 @@
   *
   * @graph ```
   * (:Form => { 
-  *     formId :: string,   //  a unique identifier for the form
-  *     cik :: int,         // the Central Index Key for the company that filed the form
-  *     cusip6:: string,    // the CUSIP6 identifier for the company
-  *     source :: string,   // a link back to the original 10k document
-  *     summary :: string,  // text summary generated with the LLM 
-  *     summaryEmbeddings: list<float> // vector embedding of summary
+  *     formId :: string!,   //  a unique identifier for the form
+  *     source :: string!,   // a link back to the original 10k document
+  *     summary :: string,   // text summary generated with the LLM **NOTE: not yet implemented! **
+  *     summaryEmbeddings: list<float> // vector embedding of summary **NOTE: not yet implemented! **
   * })
   *
   * (:Chunk => {
-  *    chunkId :: string,  // a unique identifier for the chunk
-  *    chunkSeqId :: int,  // the sequence number of the chunk within the section
-  *    text :: string,     // the text of the chunk 
+  *    chunkId :: string!,  // a unique identifier for the chunk
+  *    text :: string!,     // the text of the chunk 
   *    textEmbedding :: list<float> // vector embedding of the text
   * })
   * 
-  * (:Form)=[:SECTION]=>(:Chunk)
-  * (:Chunk)=[:NEXT]=>(:Chunk)
+  * // @kind contains
+  * // @synonyms 
+  * (:Form)=[:SECTION => { item :: string }]=>(:Chunk)
+  *
+  * // @kind peer
+  * // @antonym previous
+  * (:Chunk)=[:NEXT^1]=>(:Chunk)
+  *
+  * // @kind membership
+  * (:Chunk)=[:PART_OF^1]->(:Form)
   *
   * (:Company => {
-  *     name :: string, // the name of the company
-  *     names :: list<string>, // list of alternative names for the company
-  *     cusip6:: string,       // the CUSIP6 identifier for the company
-  *     cusip:: list<string>,  // list of known CUSIP identifiers for the company
-  *     address :: string, // the address of the company **NOTE: missing! **
+  *     cik :: int!,            // the Central Index Key for the company
+  *     cusip6:: string!,       // the CUSIP6 identifier for the company
+  *     name :: string!,        // the name of the company
+  *     names :: list<string>,  // list of alternative names for the company
+  *     cusip:: list<string>,   // list of known CUSIP identifiers for the company
+  *     address :: string       // the address of the company **NOTE: not yet implemented! **
   * })
   *
   * (:Manager {
-  *     cik :: int, // the Central Index Key for the manager
+  *     cik :: int!, // the Central Index Key for the manager
   *     name :: string, // the name of the manager
   *     address :: string // the address of the manager
   * })
@@ -54,10 +60,15 @@
   * ```
   *
   * @module LoadEdgarKG
+  * @plugins apoc, genai
   * @param openAiApiKey::string - OpenAI API key
   * @param baseURL::string - Base URL for the data files
   */
-RETURN "LoadEdgarKG" as moduleName // first statement in a module must RETURN module name
+MERGE (kg:KnowledgeGraph {name: "EdgarKG"})
+  ON CREATE SET kg.createdAt = datetime()
+  ON MATCH SET kg.lastOperation = datetime(),
+              kg.sources = [$baseURL + 'form10k/*', $baseURL + 'form13.csv']
+RETURN kg.name as name // first statement in a module must RETURN module name
 ;
 // second statement in a module should indicate parameters with default values
 :params { 
@@ -65,7 +76,6 @@ RETURN "LoadEdgarKG" as moduleName // first statement in a module must RETURN mo
   baseURL: "https://raw.githubusercontent.com/neo4j-examples/sec-edgar-notebooks/main/data/sample/"
 }
 ;
-
 ////////////////////////////////////////////////
 // Load Form 10-K data
 
@@ -104,12 +114,16 @@ CALL {
   WITH f, item, chunkSeqId, f.formId + "-" + item + "-chunk" + chunkSeqId as chunkId
   MERGE (section:Chunk {chunkId: chunkId})
   ON CREATE SET 
-      section.chunkSeqId = chunkSeqId,
       section.text = apoc.any.property(f, item)
-  MERGE (f)-[:SECTION {f10kItem: item}]->(section)
+  MERGE (f)-[:SECTION {item: item}]->(section)
+  MERGE (section)-[:PART_OF]->(f)
 }
 ;
-// Splt the text into chunks of 1000 words
+// Remove form section texts from the form nodes themselves
+MATCH (f:Form)
+SET f.item1 =  null, f.item1a = null, f.item7 = null, f.item7a = null
+;
+// Split the text into chunks of 1000 words
 MATCH (f:Form)-[s:SECTION]->(first:Chunk)
 WITH f, s, first
 WITH f, s, first, apoc.text.split(first.text, "\s+") as tokens
@@ -119,7 +133,7 @@ WITH f, s, first, collect(chunk) as chunks
 CALL {
     WITH f, s, first, chunks
     WITH f, s, first, chunks, [idx in range(1, size(chunks) -1) | 
-         { chunkId: f.formId + "-" + s.f10kItem + "-chunk" + apoc.number.format(idx, "#0000"), text: chunks[idx] }] as chunkProps 
+         { chunkId: f.formId + "-" + s.item + "-chunk" + apoc.number.format(idx, "#0000"), text: chunks[idx] }] as chunkProps 
     CALL apoc.create.nodes(["Chunk"], chunkProps) yield node
     SET first.text = head(chunks)
     MERGE (node)-[:PART_OF]->(f)
@@ -129,15 +143,6 @@ CALL {
     MERGE (first)-[:NEXT]->(nextNode)
 }
 RETURN f.formId
-;
-// Generate embeddings for each chunk
-:AUTO  
-MATCH (chunk:Chunk) WHERE chunk.textEmbedding IS NULL
-CALL {
-  WITH chunk
-  WITH chunk, genai.vector.encode(chunk.text, "OpenAI", {token: $openAiApiKey}) AS vector
-  CALL db.create.setNodeVectorProperty(chunk, "textEmbedding", vector)    
-} IN TRANSACTIONS OF 10 ROWS
 ;
 ////////////////////////////////////////////////////////////////
 // Load Form 13 data
@@ -175,6 +180,20 @@ MERGE (mgr)-[owns:OWNS_STOCK_IN {
 ;
 MATCH (com:Company), (form:Form)
   WHERE com.cusip6 = form.cusip6
-SET com.names = form.names
+SET com.names = form.names,
+    com.cik = form.cik
+SET form.names = null,
+    form.cik = null,
+    form.cusip6 = null,
+    form.cusip = null
 MERGE (com)-[:FILED]->(form)
+;
+// Generate embeddings for each chunk. This may take a while.
+:auto  
+MATCH (chunk:Chunk) WHERE chunk.textEmbedding IS NULL
+CALL {
+  WITH chunk
+  WITH chunk, genai.vector.encode(chunk.text, "OpenAI", {token: $openAiApiKey}) AS vector
+  CALL db.create.setNodeVectorProperty(chunk, "textEmbedding", vector)    
+} IN TRANSACTIONS OF 10 ROWS
 ;
