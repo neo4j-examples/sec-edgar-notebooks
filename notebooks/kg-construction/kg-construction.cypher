@@ -169,7 +169,7 @@ LOAD CSV WITH HEADERS FROM $baseURL + "form13.csv" as row
 MERGE (com:Company {cusip6: row.cusip6})
   ON CREATE SET com.name = row.companyName,
                 com.cusip = row.cusip
-MERGE (mgr:Manager {cik: row.managerCik})
+MERGE (mgr:Manager {cik: toInteger(row.managerCik)})
     ON CREATE SET mgr.name = row.managerName,
             mgr.address = row.managerAddress
 MERGE (mgr)-[owns:OWNS_STOCK_IN { 
@@ -181,7 +181,7 @@ MERGE (mgr)-[owns:OWNS_STOCK_IN {
 MATCH (com:Company), (form:Form)
   WHERE com.cusip6 = form.cusip6
 SET com.names = form.names,
-    com.cik = form.cik
+    com.cik = toInteger(form.cik)
 SET form.names = null,
     form.cik = null,
     form.cusip6 = null,
