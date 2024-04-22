@@ -1,3 +1,10 @@
+// Module parameter definitions (using client-side command for Neo4j Browser/Query)
+:params { 
+  moduleName: "LoadEdgarKG",
+  openAiApiKey: "paste your OpenAI API key here", 
+  baseURL: "https://raw.githubusercontent.com/neo4j-examples/sec-edgar-notebooks/main/data/sample/"
+}
+;
 /**
   * Load Form 10-K and Form 13 data from remote CSV files.
   * 
@@ -68,13 +75,7 @@ MERGE (kg:KnowledgeGraph {name: "EdgarKG"})
   ON CREATE SET kg.createdAt = datetime()
   ON MATCH SET kg.lastOperation = datetime(),
               kg.sources = [$baseURL + 'form10k/*', $baseURL + 'form13.csv']
-RETURN kg.name as name // first statement in a module must RETURN module name
-;
-// second statement in a module should indicate parameters with default values
-:params { 
-  openAiApiKey: "paste your OpenAI API key here", 
-  baseURL: "https://raw.githubusercontent.com/neo4j-examples/sec-edgar-notebooks/main/data/sample/"
-}
+RETURN $moduleName as name // first statement in a module must RETURN module name
 ;
 ////////////////////////////////////////////////
 // Load Form 10-K data
