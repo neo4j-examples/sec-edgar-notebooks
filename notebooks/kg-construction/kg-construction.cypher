@@ -179,6 +179,7 @@ MERGE (mgr)-[owns:OWNS_STOCK_IN {
       SET owns.value  = toFloat(row.value), 
           owns.shares = toInteger(row.shares)
 ;
+// Connect the Form 10-K to the Company, migrating some properties from Form to Company
 MATCH (com:Company), (form:Form)
   WHERE com.cusip6 = form.cusip6
 SET com.names = form.names,
